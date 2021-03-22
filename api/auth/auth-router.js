@@ -1,6 +1,15 @@
 // Require `checkUsernameFree`, `checkUsernameExists` and `checkPasswordLength`
 // middleware functions from `auth-middleware.js`. You will need them here!
+const express = require('express');
+const Users = require('../users/users-model');
+const bcrypt = require('bcryptjs');
+const {
+  checkUsernameFree, 
+  checkUsernameExists, 
+  checkPasswordLength,
+} = require('./auth-middleware');
 
+const router = express.Router()
 
 /**
   1 [POST] /api/auth/register { "username": "sue", "password": "1234" }
@@ -24,7 +33,19 @@
     "message": "Password must be longer than 3 chars"
   }
  */
-
+  router.post('/register', checkPasswordLength(), checkUsernameFree(), async (req, res, next) => {
+    try {
+      const {username, password} = req.body
+      const pw = await bcrypt.hashSync(password, 12)
+      const newUser = await Users.add({
+      username, 
+      password: pw
+    })
+    res.status(200).json(newUser)
+    } catch (err) {
+      next(err)
+    }
+  })
 
 /**
   2 [POST] /api/auth/login { "username": "sue", "password": "1234" }
@@ -41,6 +62,23 @@
     "message": "Invalid credentials"
   }
  */
+
+  router.post("/login", checkUsernameExists(), async (req, res, next) => {
+    try {
+      const {username, password} = req.body
+      const user = await Users.findBy({username}).first()
+      const validatePassword = await bcrypt.compare(password, user.password)
+  
+      if(!validatePassword) {
+        return res.status(401).json({error: "Invalid credentials"})
+      } else {
+        req.session.user = user
+        res.json({message: `welcome ${user.username}`})
+      }
+    } catch (err) {
+      next(err)
+    }
+  })
 
 
 /**
@@ -59,5 +97,24 @@
   }
  */
 
+  router.get("/logout", async(req, res, next) => {
+    try {
+      if(!req.session || !req.session.user) {
+        res.status(200).json({error: "no session"})
+      } else {
+        req.session.destroy((err) => {
+          if(err) {
+            next(err)
+          } else {
+            res.status(200).json({message: "logged out"})
+          }
+        })
+      }
+    } catch (err) {
+      next(err)
+    }
+  })
+
  
 // Don't forget to add the router to the `exports` object so it can be required in other modules
+module.exports = router;
